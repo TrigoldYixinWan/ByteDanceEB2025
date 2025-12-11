@@ -145,12 +145,17 @@ export async function POST(
       const uint8Array = new Uint8Array(arrayBuffer)
 
       // 动态加载 pdfjs-dist
-      const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js')
+      const pdfjsLib = require('pdfjs-dist')
+      
+      // 禁用 worker（Node.js 环境）
+      pdfjsLib.GlobalWorkerOptions.workerSrc = null
       
       // 加载 PDF 文档
       const loadingTask = pdfjsLib.getDocument({
         data: uint8Array,
         useSystemFonts: true,
+        standardFontDataUrl: null, // 禁用字体加载
+        disableFontFace: true,
       })
       
       const pdfDocument = await loadingTask.promise
