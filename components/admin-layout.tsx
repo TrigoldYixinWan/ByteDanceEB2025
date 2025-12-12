@@ -18,6 +18,9 @@ function Sidebar() {
   const { user, signOut, loading: userLoading } = useUser()
   const [loading, setLoading] = useState(false)
 
+  // 🔍 调试日志
+  console.log('[AdminSidebar] userLoading:', userLoading, 'user:', user?.email, 'role:', user?.profile?.role)
+
   // Navigation items - filtered by role
   const navigationItems = [
     {
@@ -124,8 +127,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
   return (
     <div className="min-h-screen flex">
-      {/* Desktop Sidebar */}
-      <aside className="hidden lg:block w-64 border-r bg-card">
+      {/* Desktop Sidebar - 固定在视窗左侧 */}
+      <aside className="hidden lg:block w-64 border-r bg-card h-screen sticky top-0">
         <Sidebar />
       </aside>
 

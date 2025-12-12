@@ -3,11 +3,10 @@
 import React, { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
-import { MerchantLayout, setLastViewedDocument } from "@/components/merchant-layout"
-import { useUser } from "@/components/providers/user-provider"
+import { AdminLayout } from "@/components/admin-layout"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { ChevronLeft, Calendar, Tag, MessageSquare, FileText, Download, AlertCircle, ExternalLink, Loader2 } from "lucide-react"
+import { ChevronLeft, Calendar, Tag, FileText, Download, AlertCircle, ExternalLink, Loader2, Eye, FileCode } from "lucide-react"
 
 // 文档详情接口
 interface DocumentDetail {
@@ -41,10 +40,9 @@ const getFileType = (contentType: string, filePath: string): 'pdf' | 'markdown' 
   return 'unknown'
 }
 
-export default function DocumentDetailPage() {
+export default function AdminDocumentDetailPage() {
   const params = useParams()
   const id = params.id as string
-  const { user } = useUser()
 
   const [document, setDocument] = useState<DocumentDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -54,6 +52,9 @@ export default function DocumentDetailPage() {
   const [rawContent, setRawContent] = useState<string | null>(null)
   const [rawContentLoading, setRawContentLoading] = useState(false)
   const [rawContentError, setRawContentError] = useState<string | null>(null)
+  
+  // 显示模式：'original' 原始文件 | 'chunks' 分块内容
+  const [viewMode, setViewMode] = useState<'original' | 'chunks'>('original')
 
   // 从 API 获取文档详情
   useEffect(() => {
@@ -71,11 +72,6 @@ export default function DocumentDetailPage() {
 
         const data = await response.json()
         setDocument(data.document)
-        
-        // 保存最后访问的文档到 localStorage（使用用户 ID 区分）
-        if (data.document?.id && data.document?.title) {
-          setLastViewedDocument(data.document.id, data.document.title, user?.id)
-        }
       } catch (err) {
         console.error('获取文档失败:', err)
         setError(err instanceof Error ? err.message : '获取文档失败')
@@ -87,7 +83,7 @@ export default function DocumentDetailPage() {
     if (id) {
       fetchDocument()
     }
-  }, [id, user?.id])
+  }, [id])
 
   // 获取原始文件内容（MD/TXT）
   const fetchRawContent = useCallback(async (sourceUrl: string) => {
@@ -185,7 +181,7 @@ export default function DocumentDetailPage() {
         return
       }
 
-            const trimmedLine = line.trim()
+      const trimmedLine = line.trim()
 
       // 空行
       if (!trimmedLine) {
@@ -194,17 +190,17 @@ export default function DocumentDetailPage() {
       }
 
       // 标题
-            if (trimmedLine.startsWith('# ')) {
+      if (trimmedLine.startsWith('# ')) {
         flushList()
         elements.push(<h1 key={index} className="text-3xl font-bold mt-8 mb-4 text-foreground border-b pb-2">{trimmedLine.slice(2)}</h1>)
         return
-            }
-            if (trimmedLine.startsWith('## ')) {
+      }
+      if (trimmedLine.startsWith('## ')) {
         flushList()
         elements.push(<h2 key={index} className="text-2xl font-bold mt-6 mb-3 text-foreground">{trimmedLine.slice(3)}</h2>)
         return
-            }
-            if (trimmedLine.startsWith('### ')) {
+      }
+      if (trimmedLine.startsWith('### ')) {
         flushList()
         elements.push(<h3 key={index} className="text-xl font-semibold mt-5 mb-2 text-foreground">{trimmedLine.slice(4)}</h3>)
         return
@@ -231,29 +227,29 @@ export default function DocumentDetailPage() {
           </blockquote>
         )
         return
-            }
+      }
 
       // 无序列表
-            if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('* ')) {
+      if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('* ')) {
         if (listType !== 'ul') {
           flushList()
           listType = 'ul'
         }
         listItems.push(<li key={index} className="text-foreground">{renderInlineMarkdown(trimmedLine.slice(2))}</li>)
         return
-            }
+      }
 
       // 有序列表
-            if (/^\d+\.\s/.test(trimmedLine)) {
+      if (/^\d+\.\s/.test(trimmedLine)) {
         if (listType !== 'ol') {
           flushList()
           listType = 'ol'
         }
         listItems.push(<li key={index} className="text-foreground">{renderInlineMarkdown(trimmedLine.replace(/^\d+\.\s/, ''))}</li>)
         return
-            }
+      }
 
-            // 普通段落
+      // 普通段落
       flushList()
       elements.push(<p key={index} className="text-foreground leading-relaxed my-3">{renderInlineMarkdown(trimmedLine)}</p>)
     })
@@ -267,7 +263,6 @@ export default function DocumentDetailPage() {
 
   // 渲染行内 Markdown（加粗、斜体、代码、链接）
   const renderInlineMarkdown = (text: string): React.ReactNode => {
-    // 简化处理：仅处理加粗、斜体、行内代码
     const parts: React.ReactNode[] = []
     let remaining = text
     let key = 0
@@ -313,7 +308,7 @@ export default function DocumentDetailPage() {
       <pre className="whitespace-pre-wrap font-mono text-sm bg-muted/50 p-6 rounded-lg border overflow-x-auto">
         {content}
       </pre>
-      )
+    )
   }
 
   // 获取文件类型图标和标签
@@ -336,16 +331,16 @@ export default function DocumentDetailPage() {
   const fileTypeInfo = document ? getFileTypeInfo(document.contentType, document.filePath) : null
 
   return (
-    <MerchantLayout>
+    <AdminLayout>
       <div className="flex gap-6 min-h-screen">
         {/* Main Content */}
         <main className="flex-1">
           <div className="max-w-5xl px-4 sm:px-6 lg:px-8 py-8">
             {/* 返回按钮 */}
-            <Link href="/portal" className="inline-block">
+            <Link href="/admin/dashboard" className="inline-block">
               <Button variant="ghost" className="mb-6">
                 <ChevronLeft className="mr-2 w-4 h-4" />
-                返回知识库
+                返回文档管理
               </Button>
             </Link>
 
@@ -368,8 +363,8 @@ export default function DocumentDetailPage() {
                       <p className="text-sm text-muted-foreground">{error}</p>
                     </div>
                   </div>
-                  <Link href="/portal" className="inline-block mt-4">
-                    <Button variant="outline">返回知识库</Button>
+                  <Link href="/admin/dashboard" className="inline-block mt-4">
+                    <Button variant="outline">返回文档管理</Button>
                   </Link>
                 </CardContent>
               </Card>
@@ -384,27 +379,33 @@ export default function DocumentDetailPage() {
                     <span className="text-4xl">{fileTypeInfo?.icon}</span>
                     <div className="flex-1">
                       <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
-                  {document.title}
-                </h1>
+                        {document.title}
+                      </h1>
                       <span className={`inline-block mt-2 text-sm font-medium ${fileTypeInfo?.color}`}>
                         {fileTypeInfo?.label}
                       </span>
                     </div>
                   </div>
 
-                {/* 元信息 */}
+                  {/* 元信息 */}
                   <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-sm text-muted-foreground pb-6 border-b border-border">
-                  <div className="flex items-center gap-2">
-                    <Tag className="w-4 h-4" />
-                    <span>{document.category}</span>
-                    {document.subcategory && (
-                      <span className="text-muted-foreground/70">/ {document.subcategory}</span>
-                    )}
-                  </div>
+                    <div className="flex items-center gap-2">
+                      <Tag className="w-4 h-4" />
+                      <span>{document.category}</span>
+                      {document.subcategory && (
+                        <span className="text-muted-foreground/70">/ {document.subcategory}</span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4" />
                       <span>{formatDate(document.createdAt)}</span>
                     </div>
+                    {document.chunkCount > 0 && (
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4" />
+                        <span>{document.chunkCount} 个文本块</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -413,12 +414,33 @@ export default function DocumentDetailPage() {
                   <Card className="mb-6 border-yellow-500/50 bg-yellow-50/50 dark:bg-yellow-950/20">
                     <CardContent className="pt-4 pb-4">
                       <p className="text-sm text-yellow-700 dark:text-yellow-400">
-                        ⚠️ 此文档尚未处理完成（状态: {document.status}），AI 搜索功能可能受限。
+                        ⚠️ 此文档尚未处理完成（状态: {document.status}），请先在文档管理页面处理此文档。
                       </p>
                     </CardContent>
                   </Card>
                 )}
 
+                {/* 视图切换按钮（仅对文本类文件显示） */}
+                {(fileType === 'markdown' || fileType === 'text') && document.content && (
+                  <div className="flex gap-2 mb-6">
+                    <Button
+                      variant={viewMode === 'original' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setViewMode('original')}
+                    >
+                      <Eye className="w-4 h-4 mr-2" />
+                      原始文件
+                    </Button>
+                    <Button
+                      variant={viewMode === 'chunks' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setViewMode('chunks')}
+                    >
+                      <FileCode className="w-4 h-4 mr-2" />
+                      分块内容
+                    </Button>
+                  </div>
+                )}
 
                 {/* ===== PDF 文件展示 ===== */}
                 {fileType === 'pdf' && document.sourceUrl && (
@@ -454,35 +476,55 @@ export default function DocumentDetailPage() {
                 {/* ===== Markdown 文件展示 ===== */}
                 {fileType === 'markdown' && (
                   <div>
-                    {rawContentLoading ? (
-                      <div className="text-center py-12">
-                        <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
-                        <p className="mt-4 text-muted-foreground">加载文档内容...</p>
-                      </div>
-                    ) : rawContentError ? (
-                      <Card className="border-destructive">
-                        <CardContent className="pt-6">
-                          <p className="text-destructive">❌ {rawContentError}</p>
-                          <Button 
-                            variant="outline" 
-                            className="mt-4"
-                            onClick={() => document.sourceUrl && fetchRawContent(document.sourceUrl)}
-                          >
-                            重试
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    ) : rawContent ? (
-                      <div className="prose prose-sm sm:prose lg:prose-lg max-w-none dark:prose-invert">
-                        {renderMarkdown(rawContent)}
-                      </div>
+                    {viewMode === 'original' ? (
+                      rawContentLoading ? (
+                        <div className="text-center py-12">
+                          <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
+                          <p className="mt-4 text-muted-foreground">加载原始内容...</p>
+                        </div>
+                      ) : rawContentError ? (
+                        <Card className="border-destructive">
+                          <CardContent className="pt-6">
+                            <p className="text-destructive">❌ {rawContentError}</p>
+                            <Button 
+                              variant="outline" 
+                              className="mt-4"
+                              onClick={() => document.sourceUrl && fetchRawContent(document.sourceUrl)}
+                            >
+                              重试
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      ) : rawContent ? (
+                        <div className="prose prose-sm sm:prose lg:prose-lg max-w-none dark:prose-invert">
+                          {renderMarkdown(rawContent)}
+                        </div>
+                      ) : (
+                        <Card className="bg-muted/50">
+                          <CardContent className="pt-6 text-center py-12">
+                            <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                            <p className="text-muted-foreground">正在获取文档内容...</p>
+                          </CardContent>
+                        </Card>
+                      )
                     ) : (
-                      <Card className="bg-muted/50">
-                        <CardContent className="pt-6 text-center py-12">
-                          <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                          <p className="text-muted-foreground">正在获取文档内容...</p>
-                        </CardContent>
-                      </Card>
+                      document.content ? (
+                        <div className="space-y-4">
+                          <p className="text-sm text-muted-foreground mb-4">
+                            以下是文档分块后的内容，用于 AI 语义搜索。
+                          </p>
+                          <div className="prose prose-sm sm:prose max-w-none dark:prose-invert">
+                            {renderMarkdown(document.content)}
+                          </div>
+                        </div>
+                      ) : (
+                        <Card className="bg-muted/50">
+                          <CardContent className="pt-6 text-center py-12">
+                            <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                            <p className="text-muted-foreground">暂无分块内容</p>
+                          </CardContent>
+                        </Card>
+                      )
                     )}
                   </div>
                 )}
@@ -490,33 +532,51 @@ export default function DocumentDetailPage() {
                 {/* ===== 纯文本文件展示 ===== */}
                 {fileType === 'text' && (
                   <div>
-                    {rawContentLoading ? (
-                      <div className="text-center py-12">
-                        <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
-                        <p className="mt-4 text-muted-foreground">加载文档内容...</p>
-                      </div>
-                    ) : rawContentError ? (
-                      <Card className="border-destructive">
-                        <CardContent className="pt-6">
-                          <p className="text-destructive">❌ {rawContentError}</p>
-                          <Button 
-                            variant="outline" 
-                            className="mt-4"
-                            onClick={() => document.sourceUrl && fetchRawContent(document.sourceUrl)}
-                          >
-                            重试
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    ) : rawContent ? (
-                      renderPlainText(rawContent)
+                    {viewMode === 'original' ? (
+                      rawContentLoading ? (
+                        <div className="text-center py-12">
+                          <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
+                          <p className="mt-4 text-muted-foreground">加载原始内容...</p>
+                        </div>
+                      ) : rawContentError ? (
+                        <Card className="border-destructive">
+                          <CardContent className="pt-6">
+                            <p className="text-destructive">❌ {rawContentError}</p>
+                            <Button 
+                              variant="outline" 
+                              className="mt-4"
+                              onClick={() => document.sourceUrl && fetchRawContent(document.sourceUrl)}
+                            >
+                              重试
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      ) : rawContent ? (
+                        renderPlainText(rawContent)
+                      ) : (
+                        <Card className="bg-muted/50">
+                          <CardContent className="pt-6 text-center py-12">
+                            <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                            <p className="text-muted-foreground">正在获取文档内容...</p>
+                          </CardContent>
+                        </Card>
+                      )
                     ) : (
-                      <Card className="bg-muted/50">
-                        <CardContent className="pt-6 text-center py-12">
-                          <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                          <p className="text-muted-foreground">正在获取文档内容...</p>
-                        </CardContent>
-                      </Card>
+                      document.content ? (
+                        <div className="space-y-4">
+                          <p className="text-sm text-muted-foreground mb-4">
+                            以下是文档分块后的内容，用于 AI 语义搜索。
+                          </p>
+                          {renderPlainText(document.content)}
+                        </div>
+                      ) : (
+                        <Card className="bg-muted/50">
+                          <CardContent className="pt-6 text-center py-12">
+                            <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                            <p className="text-muted-foreground">暂无分块内容</p>
+                          </CardContent>
+                        </Card>
+                      )
                     )}
                   </div>
                 )}
@@ -555,8 +615,8 @@ export default function DocumentDetailPage() {
                   <p className="text-sm text-muted-foreground mt-2">
                     请求的文档可能已被删除或从未存在
                   </p>
-                  <Link href="/portal" className="inline-block mt-4">
-                    <Button>返回知识库</Button>
+                  <Link href="/admin/dashboard" className="inline-block mt-4">
+                    <Button>返回文档管理</Button>
                   </Link>
                 </CardContent>
               </Card>
@@ -604,6 +664,10 @@ export default function DocumentDetailPage() {
                     <dt className="text-muted-foreground">文件类型</dt>
                     <dd className="font-medium">{fileTypeInfo?.label || '未知'}</dd>
                   </div>
+                  <div className="flex justify-between items-center">
+                    <dt className="text-muted-foreground">文本块</dt>
+                    <dd className="font-medium">{document.chunkCount} 个</dd>
+                  </div>
                   <div className="pt-2 border-t">
                     <dt className="text-muted-foreground mb-1">创建时间</dt>
                     <dd className="font-medium">{formatDate(document.createdAt)}</dd>
@@ -650,26 +714,9 @@ export default function DocumentDetailPage() {
             </Card>
           )}
 
-          {/* AI 助手入口 */}
-          <Card className="bg-primary/5 border-primary/20">
-            <CardContent className="pt-4">
-              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-primary" />
-                AI 智能助手
-              </h3>
-              <p className="text-xs text-muted-foreground mb-4">
-                有关于此文档的问题？让 AI 助手帮您快速找到答案
-            </p>
-            <Link href="/portal/chat">
-                <Button className="w-full" size="sm">
-                <MessageSquare className="mr-2 w-4 h-4" />
-                  开始咨询
-              </Button>
-            </Link>
-            </CardContent>
-          </Card>
         </aside>
       </div>
-    </MerchantLayout>
+    </AdminLayout>
   )
 }
+

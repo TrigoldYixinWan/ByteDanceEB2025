@@ -149,14 +149,41 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 验证文件类型
-    const allowedTypes = ['application/pdf', 'text/plain', 'text/markdown']
-    if (!allowedTypes.includes(file.type)) {
+    // 验证文件类型（同时检查 MIME type 和文件扩展名）
+    const allowedMimeTypes = [
+      'application/pdf', 
+      'text/plain', 
+      'text/markdown',
+      'application/octet-stream', // 某些浏览器对 .md 文件使用此类型
+    ]
+    const allowedExtensions = ['.pdf', '.txt', '.md', '.markdown']
+    
+    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase()
+    const isValidMimeType = allowedMimeTypes.includes(file.type)
+    const isValidExtension = allowedExtensions.includes(fileExtension)
+
+    // 如果 MIME type 是 octet-stream，必须通过扩展名验证
+    if (file.type === 'application/octet-stream' && !isValidExtension) {
+      return NextResponse.json(
+        { error: `不支持的文件类型: ${file.name}。仅支持 PDF, TXT, MD` },
+        { status: 400 }
+      )
+    }
+
+    // 如果 MIME type 不在允许列表中，且扩展名也不对
+    if (!isValidMimeType && !isValidExtension) {
       return NextResponse.json(
         { error: `不支持的文件类型: ${file.type}。仅支持 PDF, TXT, MD` },
         { status: 400 }
       )
     }
+
+    console.log(`📁 文件验证通过:`, {
+      name: file.name,
+      type: file.type,
+      extension: fileExtension,
+      size: file.size,
+    })
 
     // 验证文件大小（50MB）
     const maxSize = 50 * 1024 * 1024 // 50MB
@@ -174,11 +201,32 @@ export async function POST(request: NextRequest) {
       .toLowerCase()
     const filePath = `${user.id}/${timestamp}-${sanitizedFileName}`
 
+    // 根据文件扩展名确定正确的 Content-Type
+    // (某些浏览器对 .md 文件返回 application/octet-stream，Supabase 不接受)
+    // 使用 text/plain 作为 .md 的 MIME type（Supabase 100% 接受）
+    const getContentType = (fileName: string, originalType: string): string => {
+      const ext = fileName.split('.').pop()?.toLowerCase()
+      const mimeTypes: Record<string, string> = {
+        'pdf': 'application/pdf',
+        'txt': 'text/plain',
+        'md': 'text/plain',       // 使用 text/plain（兼容性更好）
+        'markdown': 'text/plain', // 使用 text/plain（兼容性更好）
+      }
+      return mimeTypes[ext || ''] || originalType
+    }
+
+    const contentType = getContentType(file.name, file.type)
+    console.log(`📤 上传文件: ${filePath}, Content-Type: ${contentType}`)
+
+    // 将 File 转换为 ArrayBuffer，确保 Supabase Storage 使用我们指定的 Content-Type
+    // (传递 File 对象时，SDK 可能忽略 contentType 参数，使用 File.type)
+    const fileArrayBuffer = await file.arrayBuffer()
+
     // 上传文件到 Supabase Storage
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('documents')
-      .upload(filePath, file, {
-        contentType: file.type,
+      .upload(filePath, fileArrayBuffer, {
+        contentType: contentType, // 使用修正后的 Content-Type（ArrayBuffer 时会被尊重）
         cacheControl: '3600',
         upsert: false, // 不覆盖已存在的文件
       })

@@ -23,11 +23,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   // Fetch current user on mount
   const fetchUser = async () => {
+    console.log('🔍 [UserProvider] fetchUser started')
+    
     try {
       const currentUser = await getCurrentUser()
+      console.log('✅ [UserProvider] getCurrentUser returned:', currentUser?.email)
       setUser(currentUser)
     } catch (error) {
-      console.error('Error fetching user:', error)
+      console.error('❌ [UserProvider] Error fetching user:', error)
       setUser(null)
     } finally {
       setLoading(false)
@@ -41,13 +44,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('🔔 [UserProvider] Auth state change:', event)
+      
       if (event === 'SIGNED_IN' && session) {
         await fetchUser()
       } else if (event === 'SIGNED_OUT') {
         setUser(null)
         router.push('/login')
       } else if (event === 'TOKEN_REFRESHED') {
-        await fetchUser()
+        // ⚠️ Token refresh 时不重新获取用户
+        // 用户数据不会因为 token refresh 而改变
+        console.log('✅ [UserProvider] Token refreshed, keeping existing user')
+        // 不调用 fetchUser()，保持现有用户数据
       }
     })
 

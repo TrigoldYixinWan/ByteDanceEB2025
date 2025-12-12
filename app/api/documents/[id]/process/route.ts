@@ -8,11 +8,20 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { generateEmbeddingBatch, chunkText, estimateTokenCount, estimateEmbeddingCost } from '@/lib/ai/embedding'
+import { generateEmbeddingBatch, smartChunkText, estimateTokenCount, estimateEmbeddingCost } from '@/lib/ai/embedding'
 
 // 强制使用 Node.js Runtime
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+
+// pdf-parse 在模块加载时会尝试读取测试文件，使用延迟加载避免此问题
+let pdfParse: any = null
+const getPdfParse = () => {
+  if (!pdfParse) {
+    pdfParse = require('pdf-parse')
+  }
+  return pdfParse
+}
 
 /**
  * POST /api/documents/[id]/process
@@ -75,6 +84,7 @@ export async function POST(
       title: document.title,
       status: document.status,
       filePath: document.file_path,
+      contentType: document.content_type,
     })
 
     // 检查文档状态
@@ -135,58 +145,73 @@ export async function POST(
     console.log(`✅ 文件下载成功: ${fileData.size} bytes`)
 
     // ============================================================
-    // Step 5: 解析 PDF 文本（使用 pdfjs-dist）
+    // Step 5: 解析文档文本（支持 PDF, Markdown, TXT）
     // ============================================================
     let extractedText: string
 
     try {
-      // 将 Blob 转换为 Uint8Array
       const arrayBuffer = await fileData.arrayBuffer()
-      const uint8Array = new Uint8Array(arrayBuffer)
+      const dataBuffer = Buffer.from(arrayBuffer)
+      
+      // 根据文件类型或扩展名选择解析方式
+      const filePath = document.file_path || ''
+      const contentType = document.content_type || ''
+      const fileExtension = filePath.split('.').pop()?.toLowerCase() || ''
 
-      // 动态加载 pdfjs-dist
-      const pdfjsLib = require('pdfjs-dist')
-      
-      // 禁用 worker（Node.js 环境）
-      pdfjsLib.GlobalWorkerOptions.workerSrc = null
-      
-      // 加载 PDF 文档
-      const loadingTask = pdfjsLib.getDocument({
-        data: uint8Array,
-        useSystemFonts: true,
-        standardFontDataUrl: null, // 禁用字体加载
-        disableFontFace: true,
+      console.log(`📖 开始解析文档:`, {
+        contentType,
+        fileExtension,
+        size: dataBuffer.length,
       })
-      
-      const pdfDocument = await loadingTask.promise
-      const numPages = pdfDocument.numPages
 
-      console.log(`📖 PDF 加载成功: ${numPages} 页`)
+      // 判断文件类型
+      const isPdf = contentType === 'application/pdf' || fileExtension === 'pdf'
+      const isMarkdown = contentType === 'text/markdown' || 
+                         fileExtension === 'md' || 
+                         fileExtension === 'markdown'
+      const isText = contentType === 'text/plain' || 
+                     fileExtension === 'txt'
 
-      // 提取所有页面的文本
-      const textParts: string[] = []
-      
-      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-        const page = await pdfDocument.getPage(pageNum)
-        const textContent = await page.getTextContent()
-        const pageText = textContent.items
-          .map((item: any) => item.str)
-          .join(' ')
-        textParts.push(pageText)
+      if (isPdf) {
+        // PDF 解析
+        console.log('📄 使用 pdf-parse 解析 PDF...')
+        const pdf = getPdfParse()
+        const data = await pdf(dataBuffer)
+        extractedText = data.text
+
+        console.log(`✅ PDF 解析成功:`, {
+          pages: data.numpages,
+          textLength: extractedText.length,
+        })
+      } else if (isMarkdown || isText) {
+        // Markdown 和 TXT 直接读取文本
+        console.log(`📄 直接读取 ${isMarkdown ? 'Markdown' : 'TXT'} 文本...`)
+        extractedText = dataBuffer.toString('utf-8')
+
+        console.log(`✅ 文本读取成功:`, {
+          format: isMarkdown ? 'Markdown' : 'TXT',
+          textLength: extractedText.length,
+        })
+      } else {
+        // 未知格式，尝试作为文本读取
+        console.log('⚠️ 未知文件格式，尝试作为文本读取...')
+        extractedText = dataBuffer.toString('utf-8')
+        
+        // 检查是否是有效的文本
+        if (extractedText.includes('\x00')) {
+          throw new Error(`不支持的文件格式: ${contentType || fileExtension}`)
+        }
+
+        console.log(`✅ 文本读取成功 (fallback):`, {
+          textLength: extractedText.length,
+        })
       }
-
-      extractedText = textParts.join('\n\n')
-
-      console.log(`✅ PDF 解析成功:`, {
-        pages: numPages,
-        textLength: extractedText.length,
-      })
 
       if (!extractedText || extractedText.trim().length === 0) {
-        throw new Error('PDF 文件不包含文本内容')
+        throw new Error('文档不包含文本内容')
       }
     } catch (parseError) {
-      console.error('❌ PDF 解析失败:', parseError)
+      console.error('❌ 文档解析失败:', parseError)
       
       // 回滚状态
       await supabase
@@ -196,7 +221,7 @@ export async function POST(
 
       return NextResponse.json(
         {
-          error: 'PDF 解析失败',
+          error: '文档解析失败',
           details: parseError instanceof Error ? parseError.message : '未知错误',
         },
         { status: 500 }
@@ -204,11 +229,13 @@ export async function POST(
     }
 
     // ============================================================
-    // Step 6: 文本分块
+    // Step 6: 文本分块（语义边界切分）
     // ============================================================
-    const chunks = chunkText(extractedText, 1000, 200) // 1000 字符，200 字符重叠
+    // 使用智能分块：目标 500 字符，最大 800 字符，最小 100 字符
+    // 优先在段落、句子边界切分，保持语义完整性
+    const chunks = smartChunkText(extractedText, 500, 800, 100)
 
-    console.log(`📦 文本分块完成: ${chunks.length} 个块`)
+    console.log(`📦 文本分块完成: ${chunks.length} 个块（语义边界切分）`)
 
     if (chunks.length === 0) {
       // 回滚状态

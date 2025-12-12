@@ -5,7 +5,7 @@ import Link from "next/link"
 import { AdminLayout } from "@/components/admin-layout"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Upload, FileText, CheckCircle2, Clock, Trash2, RefreshCw, AlertCircle, HelpCircle } from "lucide-react"
+import { Upload, FileText, CheckCircle2, Clock, Trash2, RefreshCw, AlertCircle, HelpCircle, Eye } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import type { Document } from "@/types"
 
@@ -200,10 +200,12 @@ export default function AdminDashboardPage() {
                           className={`border-b border-border hover:bg-secondary/30 transition-colors ${index === documents.length - 1 ? "border-b-0" : ""}`}
                         >
                           <td className="px-6 py-4">
-                            <div className="flex items-center gap-3">
-                              <FileText className="w-4 h-4 text-muted-foreground" />
-                              <span className="font-medium">{doc.title}</span>
-                            </div>
+                            <Link href={`/admin/documents/${doc.id}`}>
+                              <div className="flex items-center gap-3 hover:text-primary transition-colors cursor-pointer">
+                                <FileText className="w-4 h-4 text-muted-foreground" />
+                                <span className="font-medium hover:underline">{doc.title}</span>
+                              </div>
+                            </Link>
                           </td>
                           <td className="px-6 py-4 text-sm text-muted-foreground">{doc.category}</td>
                           <td className="px-6 py-4">
@@ -242,6 +244,18 @@ export default function AdminDashboardPage() {
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-2">
+                              {/* View Button */}
+                              <Link href={`/admin/documents/${doc.id}`}>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10"
+                                  title="查看文档"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </Link>
+
                               {/* Process Button - Only show for pending documents */}
                               {doc.status === 'pending' && (
                                 <Button

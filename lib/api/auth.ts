@@ -190,24 +190,32 @@ export async function signOut(): Promise<void> {
  * Get the current authenticated user and their profile
  */
 export async function getCurrentUser(): Promise<AuthUser | null> {
+  console.log('🔍 [getCurrentUser] Starting...')
   const supabase = createClient()
 
   // Step 1: Get auth user
+  console.log('🔍 [getCurrentUser] Calling supabase.auth.getUser()...')
   const {
     data: { user },
     error: authError,
   } = await supabase.auth.getUser()
 
+  console.log('✅ [getCurrentUser] getUser() returned:', { user: user?.email, authError })
+
   if (authError || !user) {
+    console.log('❌ [getCurrentUser] No user or auth error, returning null')
     return null
   }
 
   // Step 2: Fetch profile
+  console.log('🔍 [getCurrentUser] Fetching profile for user:', user.id)
   const { data: profileData, error: profileError } = await supabase
     .from('profiles')
     .select('*')
     .eq('id', user.id)
     .single()
+
+  console.log('✅ [getCurrentUser] Profile query returned:', { profile: profileData?.role, profileError })
 
   if (profileError) {
     console.error('Profile fetch error:', profileError)
@@ -227,6 +235,8 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     createdAt: profileData.created_at,
     updatedAt: profileData.updated_at,
   }
+
+  console.log('✅ [getCurrentUser] Returning user with profile:', { email: user.email, role: profile.role })
 
   return {
     id: user.id,

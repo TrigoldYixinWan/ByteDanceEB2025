@@ -129,6 +129,24 @@ export async function GET(
       )
     }
 
+    // 获取文档内容（从 document_chunks 聚合）
+    let content = ''
+    let chunkCount = 0
+    
+    if (document.status === 'ready') {
+      const { data: chunks, error: chunksError } = await supabase
+        .from('document_chunks')
+        .select('content')
+        .eq('document_id', id)
+        .order('created_at', { ascending: true })
+
+      if (!chunksError && chunks && chunks.length > 0) {
+        // 聚合所有 chunks 的内容
+        content = chunks.map(chunk => chunk.content).join('\n\n')
+        chunkCount = chunks.length
+      }
+    }
+
     // 🔒 生成 URL（兼容 Public/Private Bucket）
     let sourceUrl: string
     
@@ -169,6 +187,8 @@ export async function GET(
         sourceUrl, // Signed URL 或 Public URL（兼容模式）
         filePath: document.file_path,
         status: document.status,
+        content, // 聚合后的文档内容
+        chunkCount, // 文本块数量
         createdAt: document.created_at,
         updatedAt: document.updated_at,
       },
