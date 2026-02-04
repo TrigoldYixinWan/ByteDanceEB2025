@@ -1,2 +1,2 @@
 # ByteDanceEB2025
-字节前端训练营2025-小组项目-商家支持智能机器人
+This is for a merchant support chatbot helping explaining the business operation. The codes are in master branch.
